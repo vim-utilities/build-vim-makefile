@@ -1,4 +1,4 @@
-# Init Makefile
+# Build Vim Makefile
 [heading__top]:
   #build-vim-makefile
   "&#x2B06; Copies, and customizes, Makefile script to target path"
