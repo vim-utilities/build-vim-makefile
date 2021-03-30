@@ -1,0 +1,44 @@
+# build-vim-makefile completion
+
+_build_vim_makefile() {
+    local cur prev words cword split
+    _init_completion || return
+
+    # default completion if parameter looks like a path
+    if [[ "${cur}" == @(*/|[.~])* ]]; then
+        _filedir
+        return
+    fi
+
+    case "${prev}" in
+        -h|--help|-l|--license|-v|--verbose|-c|--clobber|-V|--version)
+            return
+        ;;
+        --path|--project-path|--vim|--vim-directory)
+            _filedir
+            return
+        ;;
+        --name|--project-name)
+            COMPREPLY=( $( compgen -W 'project-name' -- ${cur} ) )
+            return
+        ;;
+        --author|--project-author)
+            COMPREPLY=( $( compgen -W 'S0AndS0' -- ${cur} ) )
+            return
+        ;;
+        --project-version)
+            COMPREPLY=( $( compgen -W '0.0.1' -- ${cur} ) )
+            return
+        ;;
+    esac
+
+    # Parse help for any un-matched parameters
+    if [[ ${cur} == -* ]]; then
+        COMPREPLY=( $( compgen -W '$( _parse_help "${1}" )' -- "${cur}" ) )
+        [[ ${COMPREPLY} == *= ]] && compopt -o nospace
+        return
+    fi
+} &&
+complete -F _build_vim_makefile build-vim-makefile
+
+# ex: filetype=bash

@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+
+
+## Find true directory script resides in, true name, and true path
+__SOURCE__="${BASH_SOURCE[0]}"
+while [[ -h "${__SOURCE__}" ]]; do
+    __SOURCE__="$(find "${__SOURCE__}" -type l -ls | sed -n 's@^.* -> \(.*\)@\1@p')"
+done
+__DIR__="$(cd -P "$(dirname "${__SOURCE__}")" && pwd)"
+# __DIR_NAME__="${__DIR__##*/}"
+# __NAME__="${__SOURCE__##*/}"
+# __PATH__="${__DIR__}/${__NAME__}"
+__AUTHOR__='S0AndS0'
+__DESCRIPTION__='Copies, and customizes, Makefile script to target path'
+
+set -eE -o functrace
+
+## Provides: 'falure' <line-number> <command> exit-code
+# shellcheck source=modules/trap-failure/failure.sh
+source "${__DIR__}/modules/trap-failure/failure.sh"
+trap 'failure "LINENO" "BASH_LINENO" "${BASH_COMMAND}" "${?}"' ERR
+
+## Provides:  'argument_parser <ref_to_allowed_args> <ref_to_user_supplied_args>'
+# shellcheck source=modules/argument-parser/argument-parser.sh
+source "${__DIR__}/modules/argument-parser/argument-parser.sh"
+
+
+__license__(){
+    _year="$(date +'%Y')"
+    cat <<EOF
+Copyright (C) ${_year} ${__AUTHOR__:-"S0AndS0"}
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published
+by the Free Software Foundation, version 3 of the License.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+EOF
+}
+
+
+__usage__() {
+    local _message="${1}"
+    local _project_path="${_project_path:-~/git/hub/vim-utilities/project-name}"
+    local _project_name="${_project_name:-$(basename "${_project_path}")}"
+    local _script_name="${_script_name:-${_project_name}.sh}"
+    local _vim_directory="${_vim_directory:-~/.vim}"
+    cat <<EOF
+${__DESCRIPTION__}
+
+
+-h           --help
+    {boolean} Prints this message and exists
+
+
+-l          --license
+    {boolean} Prints license and exits
+
+
+-v          --verbose
+    {boolean} Prints messages about skipped actions
+
+
+-c          --clobber
+    {boolean} Overwirtes existing Makefile
+
+
+-V          --version
+    {boolean} Prints version of this script and exits
+
+
+--path      --project-path="${_project_path}"
+    {path} Directory path to Vim project/plugin
+
+
+--name      --project-name="${_project_name}"
+    {print} Project name
+
+
+--vim       --vim-directory="${_vim_directory}"
+    {path} Directory that plugin and documentation will be linked to
+
+
+--author    --project-author="${_project_author}"
+    {print} Author name for project Makefile
+
+
+--project-version="${_project_version}"
+    {print} Version for project Makefile
+EOF
+
+    if (( "${#_message}" )); then
+        printf >&2 '\n\n## Error: %s\n' "${_message}"
+        exit 1
+    fi
+}
+
+
+__version__() {
+    local _version_number
+    _version_number="$(git tag --list v* | tail -n1)"
+    _version_number="${_version_number:-v0.0.1}"
+    _version_number="${_version_number//[^0-9.]/}"
+
+    printf '%s - %s\n' "${__NAME__}" "${_version_number}"
+    __license__
+    printf '\nWritten by %s\n' "${__AUTHOR__}"
+}
+
+
+## Save passed arguments and acceptable arguments to Bash arrays
+# shellcheck disable=SC2034
+{
+    _passed_args=("${@:?No arguments provided}")
+    _acceptable_args=(
+        '--help|-h:bool'
+        '--license|-l:bool'
+        '--verbose|-v:bool'
+        '--clobber|-c:bool'
+        '--version|-V:bool'
+        '--project-author|--author:print'
+        '--project-version:print'
+        '--project-path|--path:path'
+        '--project-name|--name:print'
+        '--vim-directory|--vim:path'
+    )
+}
+
+
+## Pass arrays by reference/name to the `argument_parser` function
+argument_parser '_passed_args' '_acceptable_args'
+_exit_status="$?"
+
+
+# shellcheck disable=SC2154
+(( _license )) && {
+    __license__
+    exit ${_exit_status:-0}
+}
+
+
+(( "${#_project_author}" )) || {
+    _project_author="${__AUTHOR__}"
+}
+
+# shellcheck disable=SC2154
+(( "${#_project_version}" )) || {
+    _project_version="0.0.1"
+}
+
+(( _exit_status )) && {
+    __usage__ "Argument parsing exit status greater than 0 -> ${_exit_status}"
+}
+
+# shellcheck disable=SC2154
+(( _help )) && {
+    __usage__
+    exit 0
+}
+
+# configure-vim
+# shellcheck disable=SC2154
+if (( _version )); then
+    __version__
+    exit 0
+fi
+
+if (( _license )); then
+    __license__
+    exit 0
+fi
+
+
+(( "${#_project_path}" )) || {
+    __usage__ 'Target path is undefined!'
+}
+
+_project_name="${_project_name:-$(basename "${_project_path}")}"
+(( "${#_project_name}" )) || {
+    __usage__ 'Directory name cannot be parsed from target path!'
+}
+
+
+[[ -d "${_project_path}" ]] || {
+    __usage__ "Project path is not a directory -> ${_project_path}"
+}
+
+# shellcheck disable=SC2154
+{ [[ -f "${_project_path}/Makefile" ]] && ! (( _clobber )); } && {
+    __usage__ "Make file already exists at -> ${_project_path}"
+}
+
+
+(( "${#_vim_directory}" )) || {
+    _vim_directory="${HOME}/.vim"
+}
+
+
+_cp_opts=()
+_sed_opts=( --in-place )
+# shellcheck disable=SC2154
+if (( _verbose )); then
+    _cp_opts+=( --verbose )
+else
+    _sed_opts+=( --silent )
+fi
+
+
+if (("${#_cp_opts[@]}")); then
+    cp "${_cp_opts[@]}" "${__DIR__}/template-Makefile" "${_project_path}/Makefile"
+else
+    cp "${__DIR__}/template-Makefile" "${_project_path}/Makefile"
+fi
+
+sed "${_sed_opts[@]}" "s#<<TEMPLATE_AUTHOR>>#${_project_author}#g" "${_project_path}/Makefile"
+sed "${_sed_opts[@]}" "s#<<TEMPLATE_DATE>>#$(date +'%Y')#g" "${_project_path}/Makefile"
+sed "${_sed_opts[@]}" "s#<<TEMPLATE_PROJECT>>#${_project_name}#g" "${_project_path}/Makefile"
+sed "${_sed_opts[@]}" "s#<<TEMPLATE_VERSION>>#${_project_version}#g" "${_project_path}/Makefile"
+sed "${_sed_opts[@]}" "s#<<TEMPLATE_VIM>>#${_vim_directory}#g" "${_project_path}/Makefile"
+
+# vim: filetype=sh
